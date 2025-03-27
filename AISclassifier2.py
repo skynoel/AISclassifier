@@ -100,10 +100,14 @@ class FileSearchEngine(ttk.Frame):
         """Add term row to labelframe"""
         term_row = ttk.Frame(self.option_lf)
         term_row.pack(fill=X, expand=YES, pady=15)
-        start_btn = ttk.Button(master=term_row,text="Start",command=self.start ,bootstyle=OUTLINE,width=8)
+        start_btn = ttk.Button(master=term_row,text="Start",command=self.start ,bootstyle="success-outline",width=8)
         start_btn.pack(side=LEFT, padx=5)
-        close_button = ttk.Button(master=term_row, text="close",command=self.on_close,bootstyle="danger")
+        close_button = ttk.Button(master=term_row, text="close",command=self.on_close,bootstyle="secondary-outline")
         close_button.pack(side=LEFT, padx=5)
+        delete1_button = ttk.Button(master=term_row, text="deleteall",command=self.delete1,bootstyle="danger-outline")
+        delete1_button.pack(side=LEFT, padx=5)
+        delete2_button = ttk.Button(master=term_row, text="deletedaliy",command=self.delete2,bootstyle="worning-outline")
+        delete2_button.pack(side=LEFT, padx=5)
     def on_close(self):
         self.quit()
         self.destroy()
@@ -113,6 +117,7 @@ class FileSearchEngine(ttk.Frame):
         if folder_path:
             output_folder = os.path.join(os.path.dirname(folder_path), f"classify_{os.path.basename(folder_path)}")
             os.makedirs(output_folder, exist_ok=True)
+
             self.st.insert(END, f"處理中: {folder_path}\n")
             self.st.update()
 
@@ -124,6 +129,30 @@ class FileSearchEngine(ttk.Frame):
                     AIS_classifier(file_path, output_folder, self.st)  # 傳遞 self.st
                     self.st.insert(END, f"處理完成: {file_name}\n")
                     self.st.update()
+
+    def delete2(self):
+        folder_path = self.path_new
+        output_folder = os.path.join(os.path.dirname(folder_path), f"classify_{os.path.basename(folder_path)}")
+        if folder_path:
+            for file_name in os.listdir(output_folder):
+                if "merge" not in file_name:
+                    file_path = os.path.join(output_folder, file_name)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+            self.st.insert(END, f"每日刪除完成: {output_folder}\n")
+            self.st.update()
+    def delete1(self):
+        folder_path = self.path_new 
+        output_folder = os.path.join(os.path.dirname(folder_path), f"classify_{os.path.basename(folder_path)}")
+        if folder_path:
+            for file_name in os.listdir(output_folder):
+                file_path = os.path.join(output_folder, file_name)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+            self.st.insert(END, f"全部刪除完成: {output_folder}\n")
+            self.st.update()
+
+
 
 def AIS_classifier(file_path, output_folder, output_widget):
     # 從檔名中提取日期（假設日期格式為 YYYYMMDD）
@@ -168,28 +197,36 @@ def AIS_classifier(file_path, output_folder, output_widget):
     for mmsi_value, group in df.groupby("mmsi"):
         mmsi_value = str(mmsi_value)  # 確保 MMSI 是字串
         output_file = os.path.join(output_folder, f"{mmsi_value}({date_value}).csv")
+        output_file2 = os.path.join(output_folder, f"{mmsi_value}(merge).csv")
 
-        if str(mmsi_value) in file_mapping:
-            # 如果檔案已存在，讀取並合併
-            existing_file = os.path.join(output_folder, file_mapping[str(mmsi_value)])
-            existing_df = pd.read_csv(existing_file)
+        if os.path.exists(output_file):
+            # 如果檔案已存在，讀取並合併            
+            existing_df = pd.read_csv(output_file)
             combined_df = pd.concat([existing_df, group], ignore_index=True)
         else:
             # 如果檔案不存在，直接使用當前分組
             combined_df = group
+        if os.path.exists(output_file2):            
+            existing_df2 = pd.read_csv(output_file2)
+            combined_df2 = pd.concat([existing_df2, group], ignore_index=True)
+        else:
+            # 如果檔案不存在，直接使用當前分組
+            combined_df2 = group
 
         combined_df.drop(combined_df.columns[0], axis=1, inplace=True)
-
+        combined_df2.drop(combined_df.columns[0], axis=1, inplace=True)
         # 重設索引，並將索引值從 1 開始
         combined_df.reset_index(drop=True, inplace=True)
         combined_df.index += 1  # 將索引值從 1 開始
         combined_df.index.name = "Index"  # 設定索引欄位名稱為 "Index"
-
+        combined_df2.reset_index(drop=True, inplace=True)
+        combined_df2.index += 1  # 將索引值從 1 開始
+        combined_df2.index.name = "Index"  # 設定索引欄位名稱為 "Index"
         
 
         # 將結果寫回 CSV
         combined_df.to_csv(output_file, index=True)  # 保留索引作為第一欄
-
+        combined_df2.to_csv(output_file2, index=True)
         # 在介面上顯示處理進度
         output_widget.insert(END, f"Processed MMSI {mmsi_value}, saved to {output_file}\n")
         output_widget.see(END)
@@ -198,7 +235,7 @@ def AIS_classifier(file_path, output_folder, output_widget):
 
 if __name__ == '__main__':
 
-    app = ttk.Window(title="AISclassifier", themename="solar",size=[1000,800])
+    app = ttk.Window(title="MMSI_Sorting", themename="morph",size=[1000,800])
     FileSearchEngine(app)
     app.iconbitmap('icon.ico')
     app.mainloop()
