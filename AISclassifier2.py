@@ -121,7 +121,7 @@ class FileSearchEngine(ttk.Frame):
             self.st.insert(END, f"處理中: {folder_path}\n")
             self.st.update()
 
-            for file_name in os.listdir(folder_path):
+            for file_name in os.listdir(folder_path):                
                 if file_name.endswith(".csv") or file_name.endswith(".CSV"):
                     file_path = os.path.join(folder_path, file_name)
                     self.st.insert(END, f"開始處理: {file_name}\n")
@@ -129,6 +129,22 @@ class FileSearchEngine(ttk.Frame):
                     AIS_classifier(file_path, output_folder, self.st)  # 傳遞 self.st
                     self.st.insert(END, f"處理完成: {file_name}\n")
                     self.st.update()
+                elif file_name.endswith(".xlsx") or file_name.endswith(".XLSX"):
+                    file_path = os.path.join(folder_path, file_name)
+                    # Convert .xlsx to .csv
+                    try:
+                        xlsx_data = pd.read_excel(file_path)
+                        csv_file_path = file_path.replace(".xlsx", ".csv").replace(".XLSX", ".csv")
+                        xlsx_data.to_csv(csv_file_path, index=False)
+                        self.st.insert(END, f"開始處理: {file_name}\n")
+                        self.st.update()
+                        # Process the converted CSV file
+                        AIS_classifier(csv_file_path, output_folder, self.st)
+                        self.st.insert(END, f"處理完成: {file_name}\n")
+                        os.remove(csv_file_path)  # 刪除轉換後的 CSV 檔案
+                    except Exception as e:
+                        self.st.insert(END, f"Error converting {file_name} to CSV: {e}\n")
+                        self.st.update()
 
     def delete2(self):
         folder_path = self.path_new
