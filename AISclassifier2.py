@@ -145,6 +145,8 @@ class FileSearchEngine(ttk.Frame):
                     except Exception as e:
                         self.st.insert(END, f"Error converting {file_name} to CSV: {e}\n")
                         self.st.update()
+                else:
+                    self.st.insert(END, f"無法處理的檔案: {file_name}\n")
 
     def delete2(self):
         folder_path = self.path_new
