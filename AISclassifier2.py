@@ -8,6 +8,7 @@ from tkinter.filedialog import askdirectory
 import os
 import pandas as pd
 import re
+import chardet
 
 class FileSearchEngine(ttk.Frame):
 
@@ -148,7 +149,8 @@ class FileSearchEngine(ttk.Frame):
                 else:
                     self.st.insert(END, f"無法處理的檔案: {file_name}\n")
                     self.st.update()
-
+            self.st.insert(END, f"處理完成: {folder_path}\n")
+            self.st.update()
     def delete2(self):
         folder_path = self.path_new
         output_folder = os.path.join(os.path.dirname(folder_path), f"classify_{os.path.basename(folder_path)}")
@@ -193,7 +195,15 @@ def AIS_classifier(file_path, output_folder, output_widget):
 
     # 讀取 CSV 檔案
     try:
-        df = pd.read_csv(file_path)
+        # 自動判斷 CSV 編碼格式
+        
+        with open(file_path, 'rb') as f:
+            raw_data = f.read()
+            result = chardet.detect(raw_data)
+            encoding = result['encoding']
+        
+        # 使用檢測到的編碼格式讀取 CSV
+        df = pd.read_csv(file_path, encoding=encoding)
     except Exception as e:
         output_widget.insert(END, f"Error reading file '{file_name}': {e}\n")
         output_widget.see(END)
