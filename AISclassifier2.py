@@ -147,6 +147,7 @@ class FileSearchEngine(ttk.Frame):
                         self.st.update()
                 else:
                     self.st.insert(END, f"無法處理的檔案: {file_name}\n")
+                    self.st.update()
 
     def delete2(self):
         folder_path = self.path_new
