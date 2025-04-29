@@ -142,7 +142,98 @@ def count_ship(output_widget,input_directory, output_directory):
 
     print(f"Processed file saved to: {output_path}")
 
+def filter_ship(file_path, output_folder, output_widget,num1,num2):
+    try:
+        encoding = detect_encoding(file_path)
+        df = pd.read_csv(file_path, encoding=encoding)
+        output_widget.insert(END, f"正在處理檔案: {file_path} \n")
+        output_widget.see(END)
+        output_widget.update()
 
+        # 欄位名稱兼容處理
+        column_mapping = {
+            'msg_type': 'msg_type',
+            'MESSAGE_ID': 'msg_type',
+            'GPS_year': 'GPS_year',
+            'RMC_DATE_YEAR': 'GPS_year',
+            'GPS_month': 'GPS_month',
+            'RMC_DATE_MON': 'GPS_month',
+            'GPS_day': 'GPS_day',
+            'RMC_DATE_DAY': 'GPS_day',
+            'ship_type': 'ship_type',
+            'TYPE_OF_SHIP_AND_CARGO_TYPE': 'ship_type',
+            'mmsi': 'mmsi',
+            'SOURCE_ID': 'mmsi'
+        }
+
+        # 重命名欄位
+        df.rename(columns={k: v for k, v in column_mapping.items() if k in df.columns}, inplace=True)
+
+        if 'msg_type' not in df.columns:
+            output_widget.insert(END, f"警告：{file_path} 中不存在 msg_type 欄位，跳過該檔案 \n")
+            output_widget.see(END)
+            output_widget.update()
+            return
+
+        df2 = df[df['msg_type'] == 5]  # 只保留 msg_type 欄位值為 5 的列
+        if df2.empty:
+            output_widget.insert(END, f"警告：{file_path} 中不存在 msg_type 欄位值為 5 的資料，跳過該檔案 \n")
+            output_widget.see(END)
+            output_widget.update()
+            return
+
+        columns_to_keep = [
+            'GPS_year', 'GPS_month', 'GPS_day', 'PACKET_TYPE', 'mmsi',
+            'msg_type', 'ship_type'
+        ]
+        missing_columns = [col for col in columns_to_keep if col not in df2.columns]
+        if missing_columns:
+            output_widget.insert(END, f"警告：{file_path} 缺少欄位: {missing_columns}，跳過該檔案 \n")
+            output_widget.see(END)
+            output_widget.update()
+            return
+        all_target_ships = []
+        df2 = df2[columns_to_keep]
+        df2 = df2.drop_duplicates(subset=['mmsi'], keep='first')
+        for number in range(int(num1),int(num2)+1):
+            df3 = df2[df2['ship_type'].astype(int) == number]  # 將 ship_type 欄位值轉為整數後進行比較
+            if not df3.empty:
+                all_target_ships.extend(df3['mmsi'].tolist())
+          # 將原始資料中的 mmsi 資料取出並轉為列表
+        df = df[df['mmsi'].isin(all_target_ships)]# 只保留 mmsi 是目標船的資料
+        output_widget.insert(END, f"找到 {len(all_target_ships)} 筆符合條件的船隻 \n")
+        output_widget.see(END)
+        output_widget.update()
+
+        if len(df) < 1:
+            output_widget.insert(END, f"警告：{file_path} 資料不足，無法生成日期資訊 \n")
+            output_widget.see(END)
+            output_widget.update()
+            
+            return
+
+        # 避免索引越界
+        date_row = df.iloc[0]  # 使用第一筆資料
+        date_str = f"{date_row['GPS_year']} {date_row['GPS_month']} {date_row['GPS_day']}"
+        try:
+            date = datetime.strptime(date_str, '%Y %m %d')
+        except ValueError:
+            output_widget.insert(END, f"日期格式錯誤：{date_str}，跳過該檔案 \n")
+            output_widget.see(END)
+            output_widget.update()
+            return
+
+        new_filename = f"data_by{num1}to{num2}_{date.strftime('%Y%m%d')}.csv"
+        new_file_path = os.path.join(output_folder, new_filename)
+        df.to_csv(new_file_path, index=False)
+        output_widget.insert(END, f"{new_filename} 已儲存 \n")
+        output_widget.see(END)
+        output_widget.update()
+    except Exception as e:
+        output_widget.insert(END, f"讀取 {file_path} 時發生錯誤: {e} \n")
+        output_widget.see(END)
+        output_widget.update()
+        return
 
 class FileSearchEngine(ttk.Frame):
 
@@ -159,6 +250,9 @@ class FileSearchEngine(ttk.Frame):
         self.term_var = ttk.StringVar(value='md')
         self.type_var = ttk.StringVar(value='endswidth')
         self.path_new = str(_path)
+        self.input1_var = ttk.StringVar(value='0')
+        self.input2_var = ttk.StringVar(value='0')            
+        
 
         # header and labelframe option container
         option_text = "choose a directory to classify"
@@ -167,7 +261,9 @@ class FileSearchEngine(ttk.Frame):
 
         self.create_path_row()
         self.create_type_row()
+        self.create_input_row()
         self.create_btn_row()
+        
 
 
         output_container = ttk.Frame(self, padding=15)
@@ -180,7 +276,7 @@ class FileSearchEngine(ttk.Frame):
         """Add path row to labelframe"""
         path_row = ttk.Frame(self.option_lf)
         path_row.pack(fill=X, expand=YES)
-        path_lbl = ttk.Label(path_row, text="Path", width=8)
+        path_lbl = ttk.Label(path_row, text="Path", width=10)
         path_lbl.pack(side=LEFT, padx=(15, 0))
         path_ent = ttk.Entry(path_row, textvariable=self.path_var)
         path_ent.pack(side=LEFT, fill=X, expand=YES, padx=5)
@@ -191,13 +287,25 @@ class FileSearchEngine(ttk.Frame):
             width=8
         )
         browse_btn.pack(side=LEFT, padx=5)
-
+    def create_input_row(self):
+        """Add input row to labelframe"""
+        input_row = ttk.Frame(self.option_lf)
+        input_row.pack(fill=X, expand=YES)
+        input1_lbl = ttk.Label(input_row, text="from", width=10)
+        input1_lbl.pack(side=LEFT, padx=(15, 0))
+        input1_ent = ttk.Entry(input_row,textvariable=self.input1_var)
+        input1_ent.pack(side=LEFT, fill=X, expand=YES, padx=5)
+        input2_lbl = ttk.Label(input_row, text="to", width=10)
+        input2_lbl.pack(side=LEFT, padx=(15, 0))
+        input2_ent = ttk.Entry(input_row,textvariable=self.input2_var)
+        input2_ent.pack(side=LEFT, fill=X, expand=YES, padx=5)
+        
 
     def create_type_row(self):
         """Add type row to labelframe"""
         type_row = ttk.Frame(self.option_lf)
         type_row.pack(fill=X, expand=YES)
-        type_lbl = ttk.Label(type_row, text="Type", width=8)
+        type_lbl = ttk.Label(type_row, text="Type", width=11)
         type_lbl.pack(side=LEFT, padx=(15, 0))
 
         contains_opt = ttk.Radiobutton(
@@ -254,6 +362,9 @@ class FileSearchEngine(ttk.Frame):
 
             self.st.insert(END, f"處理中: {folder_path}\n")
             self.st.update()
+            num1 =self.input1_var.get()
+            num2 =self.input2_var.get()
+
 
             # 根據 type_var 的值選擇執行的程序
             selected_type = self.type_var.get()
@@ -267,7 +378,7 @@ class FileSearchEngine(ttk.Frame):
                 thread.start()
             elif selected_type == "filter":
                 # 啟動新線程來執行 type2 的程序
-                thread = threading.Thread(target=self.process_type2_files, args=(folder_path,))
+                thread = threading.Thread(target=self.process_type2_files, args=(folder_path,num1,num2))
                 thread.start()
             else:
                 self.st.insert(END, f"未知的類型選擇: {selected_type}\n")
@@ -309,14 +420,43 @@ class FileSearchEngine(ttk.Frame):
     def process_type1_files(self, folder_path):
         output_folder = os.path.join(os.path.dirname(folder_path), f"count_result_{os.path.basename(folder_path)}")
         os.makedirs(output_folder, exist_ok=True)        
-        self.st.insert(END, f"開始處理 (type1): {folder_path}\n")
+        self.st.insert(END, f"開始處理 count: {folder_path}\n")
         self.st.update()
         count_ship(self.st,folder_path, output_folder)        
-        self.st.insert(END, f"處理完成 (type1): {folder_path}\n")
+        self.st.insert(END, f"處理完成 count: {folder_path}\n")
         self.st.update()
 
-    def process_type2_files(self, folder_path):
-        self.st.insert(END, f"還沒開發\n")
+    def process_type2_files(self, folder_path,num1,num2):
+        output_folder = os.path.join(os.path.dirname(folder_path), f"filter_result_{os.path.basename(folder_path)}")
+        os.makedirs(output_folder, exist_ok=True)
+        for file_name in os.listdir(folder_path):
+            if file_name.endswith(".csv") or file_name.endswith(".CSV"):
+                file_path = os.path.join(folder_path, file_name)
+                self.st.insert(END, f"開始處理: {file_name}\n")
+                self.st.update()
+                filter_ship(file_path, output_folder, self.st,num1,num2)  # 傳遞 self.st
+                self.st.insert(END, f"處理完成: {file_name}\n")
+                self.st.update()
+            elif file_name.endswith(".xlsx") or file_name.endswith(".XLSX"):
+                file_path = os.path.join(folder_path, file_name)
+                # Convert .xlsx to .csv
+                try:
+                    xlsx_data = pd.read_excel(file_path)
+                    csv_file_path = file_path.replace(".xlsx", ".csv").replace(".XLSX", ".csv")
+                    xlsx_data.to_csv(csv_file_path, index=False)
+                    self.st.insert(END, f"開始處理: {file_name}\n")
+                    self.st.update()
+                    # Process the converted CSV file
+                    filter_ship(file_path, output_folder, self.st,num1,num2)
+                    self.st.insert(END, f"處理完成: {file_name}\n")
+                    os.remove(csv_file_path)  # 刪除轉換後的 CSV 檔案
+                except Exception as e:
+                    self.st.insert(END, f"Error converting {file_name} to CSV: {e}\n")
+                    self.st.update()
+            else:
+                self.st.insert(END, f"無法處理的檔案: {file_name}\n")
+                self.st.update()
+        self.st.insert(END, f"處理完成: {folder_path}\n")
         self.st.update()
     def delete2(self):
         folder_path = self.path_new
